@@ -32,6 +32,9 @@ AudioSegment.converter = "C:\\Users\\sohee\\ffmpeg\\ffmpeg-n7.0-latest-win64-gpl
 AudioSegment.ffmpeg = "C:\\Users\\sohee\\ffmpeg\\ffmpeg-n7.0-latest-win64-gpl-7.0\\bin\\ffmpeg.exe"
 AudioSegment.ffprobe = "C:\\Users\\sohee\\ffmpeg\\ffmpeg-n7.0-latest-win64-gpl-7.0\\bin\\ffprobe.exe"
 
+#0802 추가
+flag = None
+
 # MongoDB 클라이언트 설정 및 컬렉션 선언
 client = MongoClient(connection_string, tls=True, tlsAllowInvalidCertificates=True)
 db = client['test']  # 데이터베이스 이름
@@ -67,6 +70,41 @@ model = tf.keras.Sequential([
     tf.keras.layers.Dense(1, activation='sigmoid')
 ])
 
+model2 = tf.keras.Sequential([
+    tf.keras.layers.Dense(32, activation='relu', input_shape=(1,)),  # 입력 형태는 1개의 특징
+    tf.keras.layers.Dropout(0.3),  
+    tf.keras.layers.Dense(16, activation='relu'),  
+    tf.keras.layers.Dense(1, activation='sigmoid')  # 이진 분류를 위한 출력 레이어
+])
+
+model3 = tf.keras.Sequential([
+    tf.keras.layers.Dense(32, activation='relu', input_shape=(1,)),  # 입력 형태는 1개의 특징
+    tf.keras.layers.Dropout(0.3),  
+    tf.keras.layers.Dense(16, activation='relu'),  
+    tf.keras.layers.Dense(1, activation='sigmoid')  # 이진 분류를 위한 출력 레이어
+])
+
+model5 = tf.keras.Sequential([
+    tf.keras.layers.Dense(32, activation='relu', input_shape=(1,)),  # 입력 형태는 1개의 특징
+    tf.keras.layers.Dropout(0.3),  
+    tf.keras.layers.Dense(16, activation='relu'),  
+    tf.keras.layers.Dense(1, activation='sigmoid')  # 이진 분류를 위한 출력 레이어
+])
+
+model6 = tf.keras.Sequential([
+    tf.keras.layers.Dense(32, activation='relu', input_shape=(1,)),  # 입력 형태는 1개의 특징
+    tf.keras.layers.Dropout(0.3),  
+    tf.keras.layers.Dense(16, activation='relu'),  
+    tf.keras.layers.Dense(1, activation='sigmoid')  # 이진 분류를 위한 출력 레이어
+])
+
+model8 = tf.keras.Sequential([
+    tf.keras.layers.Dense(32, activation='relu', input_shape=(1,)),  # 입력 형태는 1개의 특징
+    tf.keras.layers.Dropout(0.3),  
+    tf.keras.layers.Dense(16, activation='relu'),  
+    tf.keras.layers.Dense(1, activation='sigmoid')  # 이진 분류를 위한 출력 레이어
+])
+
 # 필요한 전역변수들
 mfcc_record_train_values = None
 mfcc_record_test_values = None
@@ -81,6 +119,17 @@ files_record_id = None
 mfcc_control_data = None
 mfcc_record_data = None
 
+mfcc_nums = [2, 3, 5, 6, 8]
+record_values_list = []
+control_values_list = []
+record_train_values = []
+record_test_values = []
+control_train_values = []
+control_test_values = []
+combined_mfcc_list = []
+combined_labels_list = []
+similarity_score_list = []
+
 def read_wav_file(file_path):
     audio = AudioSegment.from_file(file_path)
     audio = audio.set_frame_rate(44100).set_channels(1).set_sample_width(2)
@@ -94,55 +143,106 @@ def start():
 
 @app.route('/import_dataset', methods=['GET'])
 def import_dataset():
-    global mfcc_control_test_values, mfcc_control_train_values, mfcc_record_test_values, mfcc_record_train_values, mfcc_control_data, mfcc_record_data, files_control_id, files_record_id
+    global mfcc_control_test_values, mfcc_control_train_values, mfcc_record_test_values, mfcc_record_train_values, mfcc_control_data, mfcc_record_data, files_control_id, files_record_id, \
+           mfcc_nums, record_values_list, control_values_list, record_train_values, record_test_values, control_train_values, control_test_values, flag
+    
+    # 표준화 선언
+    scaler = StandardScaler()
+    
+    # file_control_db에서 가장 최근 레코드 하나 조회
+    latest_file_control = file_control_db.find_one(sort=[('_id', -1)])
+    flag = latest_file_control['flag'] if latest_file_control and 'flag' in latest_file_control else None
+    print(f"flag value: {flag}")  # flag 값 출력
+    
     # 가장 최근 데이터 하나만 조회
     latest_coef_control = control_collection.find_one(sort=[('_id', -1)])
-    # 'files_control_id' 필드의 값을 변수에 저장
     files_control_id = latest_coef_control['files_control_id'] if latest_coef_control and 'files_control_id' in latest_coef_control else None
     print(files_control_id)  # id 테스트 출력
+    
     control_cursor = control_collection.find({'files_control_id': files_control_id})  # id에 해당하는 레코드들만 가져옴
-    # Cursor에서 데이터를 리스트로 변환 후 DataFrame 생성
     mfcc_control_data = pd.DataFrame(list(control_cursor))
 
     # 가장 최근 레코드 가져오기
     latest_coef_record = record_collection.find_one(sort=[('_id', -1)])
-    # 'files_record_id' 필드의 값을 변수에 저장
     files_record_id = latest_coef_record['files_record_id'] if latest_coef_record and 'files_record_id' in latest_coef_record else None
     print(files_record_id)  # id 테스트 출력
+    
     record_cursor = record_collection.find({'files_record_id': files_record_id})  # id에 해당하는 레코드들만 가져옴
-    # Cursor에서 데이터를 리스트로 변환 후 DataFrame 생성
     mfcc_record_data = pd.DataFrame(list(record_cursor))
-
-    # 필요한 열만 선택 (예: MFCC1부터 MFCC12까지)
+    
+    #default -> 모든 MFCC 계수 학습
+    #필요한 열만 선택 (예: MFCC1부터 MFCC12까지) -> 추후 그래프 만드는데 쓰임 -> 건들지 말기
     mfcc_control_data = mfcc_control_data.loc[:, 'MFCC1':'MFCC12']
-    mfcc_record_data = mfcc_record_data.loc[:, 'MFCC1':'MFCC12']
-
+    mfcc_record_data = mfcc_record_data.loc[:, 'MFCC1':'MFCC12'] 
+        
     # DataFrame에서 numpy 배열로 변환
     mfcc_record_values = mfcc_record_data.to_numpy()
     mfcc_control_values = mfcc_control_data.to_numpy()
-
-    # 표준화
-    scaler = StandardScaler()
+        
     normalized_record_values = scaler.fit_transform(mfcc_record_values)
     normalized_control_values = scaler.transform(mfcc_control_values)
-
+        
     # 데이터를 8:2 비율로 train과 test로 분리
     mfcc_record_train_values, mfcc_record_test_values = train_test_split(normalized_record_values, test_size=0.2,
                                                                          random_state=42)
     mfcc_control_train_values, mfcc_control_test_values = train_test_split(normalized_control_values, test_size=0.2,
                                                                            random_state=42)
+    
+    #아나운서 기능인 경우
+    if(flag == 3):
+        #리스트 초기화 
+        record_train_values = []
+        record_test_values = []
+        control_train_values = []
+        control_test_values = []
+        
+        #0801 수정, 특정 MFCC 계수만 추출하기 -> 특정 계수는 라우트 따로 만들어서 처리 or if-else 문 만들기
+        for num in mfcc_nums:
+            record_values = mfcc_control_data[f'MFCC{num}'].to_numpy()
+            control_values = mfcc_record_data[f'MFCC{num}'].to_numpy()
+
+            record_values = scaler.fit_transform(record_values.reshape(-1, 1)).flatten()
+            control_values = scaler.transform(control_values.reshape(-1, 1)).flatten()
+
+            #record_values_list.append(record_values)
+            #control_values_list.append(control_values)
+    
+            # 데이터를 8:2 비율로 train과 test로 분리
+            rec_train_values, rec_test_values = train_test_split(record_values, test_size=0.2,
+                                                                         random_state=42)
+            con_train_values, con_test_values = train_test_split(control_values, test_size=0.2,
+                                                                           random_state=42)
+            record_train_values.append (rec_train_values)
+            record_test_values.append(rec_test_values)
+            control_train_values.append(con_train_values)
+            control_test_values.append(con_test_values)
+            
     return "import label completed!"
 
 @app.route('/label_setting', methods=['GET'])
 def labeling():
     #전역 변수 선언
-    global combined_labels, combined_mfcc, mfcc_control_train_values, mfcc_record_train_values
-
-    # control_mfcc와 record_mfcc를 합친 데이터셋 생성
-    combined_mfcc = np.concatenate((mfcc_control_train_values, mfcc_record_train_values), axis=0)
+    global combined_labels, combined_mfcc, mfcc_control_train_values, mfcc_record_train_values, flag, \
+           combined_mfcc_list, combined_labels_list, record_train_values, control_train_values, mfcc_nums
 
     # 클러스터링을 위한 KMeans 모델 생성
     kmeans = KMeans(n_clusters=2, n_init = 12)
+    
+    #아나운서 기능인 경우
+    if(flag == 3):
+        #초기화 
+        combined_mfcc_list = []
+        combined_labels_list = []
+        for i in range(len(mfcc_nums)):
+            combined2_mfcc = np.concatenate((control_train_values[i].reshape(-1, 1), record_train_values[i].reshape(-1, 1)), axis=0)
+            kmeans.fit(combined2_mfcc)
+            combined2_labels = kmeans.labels_
+            
+            combined_mfcc_list.append(combined2_mfcc)
+            combined_labels_list.append(combined2_labels)
+        
+    # control_mfcc와 record_mfcc를 합친 데이터셋 생성
+    combined_mfcc = np.concatenate((mfcc_control_train_values, mfcc_record_train_values), axis=0)
 
     # combined_mfcc에 대해 클러스터링 수행
     kmeans.fit(combined_mfcc)
@@ -193,11 +293,13 @@ def labeling():
 
 @app.route('/training', methods=['GET'])
 def training():
-    global combined_labels, combined_mfcc
+    global combined_labels, combined_mfcc, flag, combined_mfcc_list, combined_labels_list, flag, model, \
+        model2, model3, model5, model6, model8
 
     if combined_labels is None:
         return jsonify({"error": "Labels not set. Please run /label_setting first."}), 400
-
+    
+    #================================== default training ===============================#
     # 데이터 분리 없이 전체 데이터를 사용
     train_data = combined_mfcc
     train_labels = combined_labels
@@ -213,6 +315,40 @@ def training():
 
     # 모델 컴파일 및 학습
     history = model.fit(train_dataset, epochs=10)
+    
+    #================================== default training ===============================#
+    
+    #================================== 추가 training ===============================#
+    #flag == 3일 때 (아나운서 기능일 때)
+    if(flag == 3):
+        # 모델을 각 딕셔너리로 관리 
+        models = {
+            2: model2,
+            3: model3,
+            5: model5,
+            6: model6,
+            8: model8
+        }
+        
+        for i in range(len(mfcc_nums)):
+            # TensorFlow 데이터셋 생성
+            train_dataset = tf.data.Dataset.from_tensor_slices((combined_mfcc_list[i], combined_labels_list[i])).batch(batch_size)
+
+            #모델 정의
+            each_model = models[mfcc_nums[i]]
+            
+            # 모델 컴파일
+            each_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.008),  # 학습률 조정
+                    loss='binary_crossentropy',
+                    metrics=['accuracy'])
+        
+            # 모델 컴파일 및 학습
+            each_model.fit(train_dataset, epochs=10)
+            
+            # 각 MFCC 계수에 대한 학습 결과를 출력합니다.
+            print(f"MFCC{mfcc_nums[i]} training completed.")
+    #================================== 추가 training ===============================#
+    
 
     # 두 번째 그래프 생성 (학습 손실과 정확도)
     fig, ax = plt.subplots(1, 2, figsize=(20, 6))  # 가로로 길고 세로로 짧게 설정
@@ -243,6 +379,113 @@ def training():
         f.write(img.getbuffer())
 
     return "Training completed!"
+
+@app.route('/model_predict', methods=['GET'])
+def model_predict():
+    #global 전역 변수 선언
+    global mfcc_control_test_values, mfcc_record_test_values, db, control_predicted_labels, record_predicted_labels, files_control_id, files_record_id, \
+           flag, control_test_values, record_train_values, model, model2, model3, model5, model6, model8, mfcc_nums, similarity_score_list
+
+    #================================== default prediction =====================================//
+    control_predictions = model.predict(mfcc_control_test_values)
+    control_predicted_labels = (control_predictions > 0.5).astype(int).flatten()
+    control_average_prediction = np.mean(control_predicted_labels)
+    print(f"실시간 음성 녹음 화자에 대한 모델의 예측값 평균 : {control_average_prediction:.4f}")
+
+    # record_mfcc 데이터셋에서 모델 예측
+    record_predictions = model.predict(mfcc_record_test_values)
+    record_predicted_labels = (record_predictions > 0.5).astype(int).flatten()
+    record_average_prediction = np.mean(record_predicted_labels)
+    print(f"증거 자료 녹음 화자에 대한 모델의 예측값 평균 : {record_average_prediction:.4f}")
+
+    # 평균 절대 오차 계산
+    mae = np.abs(control_average_prediction - record_average_prediction)
+
+    # 유사도 점수 계산
+    # 가정: 최대 MAE는 1 (예측값의 범위가 0에서 1일 때)
+    max_mae = 1
+    similarity_score = 1 - (mae / max_mae)
+
+    print(f"평균 절대 오차(MAE): {mae:.4f}")
+    print(f"유사도 점수: {similarity_score:.4f}")
+    #================================== default prediction =====================================//
+    
+    #================================== FLAG == 3인 경우 =====================================//
+    #flag == 3인 경우 추가 
+    if(flag == 3):
+        similarity_score_list = []
+        #각 MFCC 계수를 딕셔너리로 관리
+        models = {
+            2: model2,
+            3: model3,
+            5: model5,
+            6: model6,
+            8: model8
+        }
+        
+        for i in range(len(mfcc_nums)):
+            each_model = models[mfcc_nums[i]]
+            
+            control_prediction = each_model.predict(control_test_values[i])
+            control_predicted_label = (control_prediction > 0.5).astype(int).flatten()
+            control_avg_pred = np.mean(control_predicted_label)
+            
+            print(f"실시간 음성 녹음 화자에 대한 MFCC{mfcc_nums[i]} 모델의 예측값 평균 : {control_avg_pred:.4f}")
+            
+            record_prediction = each_model.predict(record_test_values[i])
+            record_prediction_label = (record_prediction > 0.5).astype(int).flatten()
+            record_avg_pred = np.mean(record_prediction_label)
+            print(f"증거 자료 녹음 화자에 대한 MFCC{mfcc_nums[i]} 모델의 예측값 평균 : {record_avg_pred:.4f}")
+            
+            #평균 절대 오차 계산
+            each_mae = np.abs(control_avg_pred - record_avg_pred)
+            
+            #유사도 점수 계산
+            max_mae = 1
+            each_similarity_score = 1 - (each_mae / max_mae)
+            
+            #유사도 리스트에 저장
+            similarity_score_list.append(round(each_similarity_score, 4)*100)
+            print(f"MFCC{mfcc_nums[i]} 유사도 점수: {each_similarity_score:.4f}")
+    
+    #================================== FLAG == 3인 경우 =====================================//
+    # 현재 시간을 UTC로 구하기
+    current_time = datetime.datetime.utcnow()
+    # 소수점 네 자리까지 반올림
+    record_average_prediction = round(record_average_prediction, 4)
+    control_average_prediction = round(control_average_prediction, 4)
+    similarity_score = round(similarity_score, 4)
+
+    data = {
+        "live_data_prediction" : record_average_prediction, #녹취록에 대한 모델의 예측 평균
+        "record_data_prediction" : control_average_prediction, #실시간 데이터에 대한 모델의 예측 평균
+        "files_record_id" : ObjectId(files_record_id), #record_files_id에 해당 하는 값
+        "files_control_id" : ObjectId(files_control_id), #control_files_id에 해당하는 값
+        #"timestamp" : current_time
+    }
+    
+    # flag 값에 따라서 필드에 값을 할당
+    if flag == 1:
+        data["result_MAE_similarity"] = similarity_score * 100  # 계산된 정확도
+        data["ai_voice_MAE_similarity"] = None
+        data["announcer_MAE_similarity"] = None
+        data["mfcc_acc_list"] = None
+    elif flag == 2:
+        data["result_MAE_similarity"] = None
+        data["ai_voice_MAE_similarity"] = similarity_score * 100  # 계산된 정확도
+        data["announcer_MAE_similarity"] = None
+        data["mfcc_acc_list"] = None
+    elif flag == 3:
+        data["result_MAE_similarity"] = None
+        data["ai_voice_MAE_similarity"] = None
+        data["announcer_MAE_similarity"] = similarity_score * 100  # 계산된 정확도
+        data["mfcc_acc_list"] = similarity_score_list
+    
+    data["timestamp"] = current_time
+
+    # 몽고 디비 results 컬렉션에 데이터 삽입
+    result = db['results'].insert_one(data)
+    return "Data inserted with record id : {}".format(result.inserted_id)
 
 @app.route('/mfcc_spectrum', methods=['GET'])
 def mfcc_spectrum():
@@ -483,58 +726,6 @@ def fft_spectrum():
     
     return "fft_spectrum.png processed!"
     
-
-@app.route('/model_predict', methods=['GET'])
-def model_predict():
-    #global 전역 변수 선언
-    global mfcc_control_test_values, mfcc_record_test_values, db, control_predicted_labels, record_predicted_labels, files_control_id, files_record_id
-
-    control_predictions = model.predict(mfcc_control_test_values)
-    control_predicted_labels = (control_predictions > 0.5).astype(int).flatten()
-    control_average_prediction = np.mean(control_predicted_labels)
-    print(f"실시간 음성 녹음 화자에 대한 모델의 예측값 평균 : {control_average_prediction:.4f}")
-
-    # record_mfcc 데이터셋에서 모델 예측
-    record_predictions = model.predict(mfcc_record_test_values)
-    record_predicted_labels = (record_predictions > 0.5).astype(int).flatten()
-    record_average_prediction = np.mean(record_predicted_labels)
-
-    # 결과 출력
-    print(f"증거 자료 녹음 화자에 대한 모델의 예측값 평균 : {record_average_prediction:.4f}")
-
-    # 평균 절대 오차 계산
-    mae = np.abs(control_average_prediction - record_average_prediction)
-
-    # 유사도 점수 계산
-    # 가정: 최대 MAE는 1 (예측값의 범위가 0에서 1일 때)
-    max_mae = 1
-    similarity_score = 1 - (mae / max_mae)
-
-    print(f"평균 절대 오차(MAE): {mae:.4f}")
-    print(f"유사도 점수: {similarity_score:.4f}")
-
-    # 현재 시간을 UTC로 구하기
-    current_time = datetime.datetime.utcnow()
-    # 소수점 네 자리까지 반올림
-    record_average_prediction = round(record_average_prediction, 4)
-    control_average_prediction = round(control_average_prediction, 4)
-    similarity_score = round(similarity_score, 4)
-    jaccard_sim = round(jaccard_sim, 4)
-
-    # 데이터 준비
-    data = {
-        "live_data_prediction" : record_average_prediction, #녹취록에 대한 모델의 예측 평균
-        "record_data_prediction" : control_average_prediction, #실시간 데이터에 대한 모델의 예측 평균
-        "MAE_similarity": similarity_score * 100,  # 계산된 정확도,
-        "files_record_id" : ObjectId(files_record_id), #record_files_id에 해당 하는 값
-        "files_control_id" : ObjectId(files_control_id), #control_files_id에 해당하는 값
-        "timestamp" : current_time
-    }
-
-    # 몽고 디비 results 컬렉션에 데이터 삽입
-    result = db['results'].insert_one(data)
-    return "Data inserted with record id : {}".format(result.inserted_id)
-
 if __name__ == '__main__':
     # ngrok을 통해 외부 접근 가능하도록 설정
     public_url = ngrok.connect(5000, bind_tls=True).public_url  # 포트 번호와 함께 bind_tls 옵션 설정
@@ -543,7 +734,37 @@ if __name__ == '__main__':
     # Flask 서버가 시작될 시간을 기다림
     time.sleep(2)  # 필요한 경우 더 길게 조정
     
+    # Flask 앱을 별도의 스레드에서 실행합니다.
+    from threading import Thread
+    def run_flask():
+        app.run(port=5000)
+
+    flask_thread = Thread(target=run_flask)
+    flask_thread.start()
+    
     #Run the Flask app in the main thread
-    app.run(port=5000)
+    # app.run(port=5000)
+    
+    #라우트를 자동으로 호출 -> 테스트 실행용
+    # response = requests.get(public_url + '/import_dataset')
+    # print("Response from /import_dataset route:", response.text)
+    
+    # response = requests.get(public_url + '/label_setting')
+    # print("Response from /label_setting route:", response.text)
+    
+    # response = requests.get(public_url + '/mfcc_bar_graph')
+    # print("Response from /mfcc_bar_graph route:", response.text)
+    
+    # response = requests.get(public_url + '/mfcc_spectrum')
+    # print("Response from /mfcc_spectrum route:", response.text)
+    
+    # response = requests.get(public_url + '/fft_spectrum')
+    # print("Response from /fft_spectrum route:", response.text)
+    
+    # response = requests.get(public_url + '/training')
+    # print("Response from /training route:", response.text)
+    
+    # response = requests.get(public_url + '/model_predict')
+    # print("Response from /model_predict route:", response.text)
 
     print("Flask server is running and ngrok tunnel is established.")
