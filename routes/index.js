@@ -192,6 +192,16 @@ router.get('/result_forensic', ensureAuthenticated, async (req, res) => {
         return res.render('no_result', { message: error });
     }
 
+    //0918 SOHEE 추가
+    if (result.result_MAE_similarity === null) {
+        return res.send(`
+            <script>
+                alert('결과 보기에 앞서 먼저 위변조 탐지를 위한 음성을 업로드해주세요.');
+                window.history.back(); // Redirects back to the previous page
+            </script>
+        `);
+    }
+
     // 결과가 있으면 결과 페이지 렌더링
     res.render('result_forensic', {
         userId: req.user._id,
@@ -210,6 +220,16 @@ router.get('/result_ai_singer', ensureAuthenticated, async (req, res) => {
         }
         // 결과가 없는 경우
         return res.render('no_result', { message: error });
+    }
+
+    // If result.ai_voice_MAE_similarity is null, show alert and prevent rendering
+    if (result.ai_voice_MAE_similarity === null) {
+        return res.send(`
+            <script>
+                alert('AI 가수 유사도를 보기에 앞서 먼저 음성을 업로드해주세요.');
+                window.history.back(); // Redirects back to the previous page
+            </script>
+        `);
     }
 
     // 결과가 있으면 결과 페이지 렌더링
@@ -231,14 +251,22 @@ router.get('/result_announce', ensureAuthenticated, async (req, res) => {
         return res.render('no_result', { message: error });
     }
 
+    //0918 SOHEE 추가
+    if (result.announcer_MAE_similarity === null) {
+        return res.send(`
+            <script>
+                alert('결과 보기에 앞서 먼저 발성 연습을 위한 음성을 업로드해주세요.');
+                window.history.back(); // Redirects back to the previous page
+            </script>
+        `);
+    }
+
     // 결과가 있으면 결과 페이지 렌더링
     res.render('result_announce', {
         userId: req.user._id,
         result
     })
 });
-
-
 
 // 결과 시각화 페이지 라우트
 router.get('/result_visual', ensureAuthenticated, async (req, res) => {
@@ -338,7 +366,7 @@ router.get('/announcer_improvements', ensureAuthenticated, async (req, res) => {
       var poor_mfccs = [];
       var thresholds = [95, 80];  // 우수: 95 이상, 양호: 80-94, 미흡: 80 미만
       var i = 0;
-      var mfcc = ["mfcc2", "mfcc3", "mfcc5", ,"mfcc6", "mfcc8"];
+      var mfcc = ["mfcc2", "mfcc3", "mfcc5","mfcc6", "mfcc8"];
       mfccDescriptions.forEach(desc => {
         if (desc.value >= thresholds[0]) {
           excellent.push(`${desc.name}(${desc.mfcc})`);
@@ -406,6 +434,7 @@ router.get('/result_detail_ai_singer', ensureAuthenticated, async (req, res) => 
     let maxDifference = 0;
     let maxDifferenceIndex = 2;
 
+    //MFCC 계수 평균 편차가 가장 큰 Index 구하는 알고리즘(절댓값 이용)
     mfccIndices.forEach(index => {
         const recordValue = recordAvg[`MFCC${index}`];
         const controlValue = controlAvg[`MFCC${index}`];
@@ -479,6 +508,32 @@ router.get('/result_overall_ai_singer', ensureAuthenticated, async (req, res) =>
     })
 });
 
+/**
+ *  pdf 페이지 라우트(forensic)
+ */
+router.get('/pdf_forensic', ensureAuthenticated, async (req, res) => {
+    
+    const { result, error, status } = await checkUserResult(req.user._id, 1);
+    const recordAvg = await CoeffieRecordAvg.findOne({ files_record_id: result.files_record_id }).lean();
+    const controlAvg = await CoeffieControlAvg.findOne({ files_control_id: result.files_control_id }).lean();
+
+    if (error) {
+        if (status === 404 || status === 500) {
+            return res.status(status).send(error);
+        }
+        // 결과가 없는 경우
+        return res.render('no_result', { message: error });
+    }
+
+    // 결과가 있으면 결과 페이지 렌더링
+    res.render('pdf_forensic', {
+        userId: req.user._id,
+        result,
+        recordAvg: recordAvg || {}, // recordAvg가 null이면 빈 객체를 할당
+        controlAvg: controlAvg || {} // controlAvg가 null이면 빈 객체를 할당
+    })
+});
+
 router.post('/file_download_forensic', ensureAuthenticated, async (req, res) => {
     
     const { result, error, status } = await checkUserResult(req.user._id, 1);
@@ -489,6 +544,16 @@ router.post('/file_download_forensic', ensureAuthenticated, async (req, res) => 
         }
         // 결과가 없는 경우
         return res.render('no_result', { message: error });
+    }
+
+    //0918 SOHEE 추가
+    if (result.result_MAE_similarity === null) {
+        return res.send(`
+            <script>
+                alert('결과 보기에 앞서 먼저 위변조 탐지를 위한 음성을 업로드해주세요.');
+                window.history.back(); // Redirects back to the previous page
+            </script>
+        `);
     }
 
     //기존 : 글꼴 렌더링 방식에 대한 설정만 제어
@@ -508,7 +573,7 @@ router.post('/file_download_forensic', ensureAuthenticated, async (req, res) => 
     // Puppeteer에 쿠키 설정
     await page.setCookie(...cookies);
 
-    await page.goto('http://localhost:3000/forensic_result_detail', { waitUntil: 'networkidle0' });
+    await page.goto('http://localhost:3000/pdf_forensic', { waitUntil: 'networkidle0' });
 
     // PDF로 렌더링
     const pdf = await page.pdf({ format: 'A4' });
@@ -518,6 +583,56 @@ router.post('/file_download_forensic', ensureAuthenticated, async (req, res) => 
     // PDF 파일을 클라이언트에게 제공
     res.contentType('application/pdf');
     res.send(pdf);
+});
+
+
+
+/**
+ *  pdf 페이지 라우트(singer)
+ */
+router.get('/pdf_singer', ensureAuthenticated, async (req, res) => {
+    
+    const { result, error, status } = await checkUserResult(req.user._id, 2);
+    const recordAvg = await CoeffieRecordAvg.findOne({ files_record_id: result.files_record_id }).lean();
+    const controlAvg = await CoeffieControlAvg.findOne({ files_control_id: result.files_control_id }).lean();
+    const mfccIndices = [2, 3, 4, 8, 9, 11];
+    const mfccDescriptions = [" ", " ", "에너지 집중도가 ", "특정 발음 패턴의 강조도가 ", "중주파수 대역에서 주파수 변동성 및 음성의 질감 정도가 ",
+        " ", " ", " ", "고주파수 대역에서 미세한 발음 변화가 ", "고주파수 대역에서 강세 위치가 ", " ", "고주파수 대역에서 끝맺음 발음이 "]
+    let maxDifference = 0;
+    let maxDifferenceIndex = 2;
+    var des = mfccDescriptions[maxDifferenceIndex];
+
+    mfccIndices.forEach(index => {
+        const recordValue = recordAvg[`MFCC${index}`];
+        const controlValue = controlAvg[`MFCC${index}`];
+        const difference = Math.abs(recordValue - controlValue);
+    
+        if (difference > maxDifference) {
+            maxDifference = difference;
+            maxDifferenceIndex = index;
+        }
+    });
+
+    if (error) {
+        if (status === 404 || status === 500) {
+            return res.status(status).send(error);
+        }
+        // 결과가 없는 경우
+        return res.render('no_result', { message: error });
+    }
+
+    console.log(`가장 큰 절댓값 차이를 가진 MFCC 계수: MFCC${maxDifferenceIndex}`);
+    console.log(`그 절댓값 차이: ${maxDifference}`);
+
+    res.render('pdf_singer', {
+        userId: req.user._id,
+        result,
+        maxDifference,
+        maxDifferenceIndex,
+        des,
+        recordAvg: recordAvg || {}, // recordAvg가 null이면 빈 객체를 할당
+        controlAvg: controlAvg || {} // controlAvg가 null이면 빈 객체를 할당
+    })
 });
 
 router.post('/file_download_ai_singer', ensureAuthenticated, async (req, res) => {
@@ -531,40 +646,13 @@ router.post('/file_download_ai_singer', ensureAuthenticated, async (req, res) =>
         return res.render('no_result', { message: error });
     }
 
-    //const browser = await puppeteer.launch({ args: ['--font-render-hinting=none'] });
-    const browser = await puppeteer.launch({headless: true, args: ['--no-sandbox']});
-    const page = await browser.newPage();
-
-    // 로그인 쿠키 가져오기
-    const cookies = req.headers.cookie.split(';').map(cookie => {
-        const [name, value] = cookie.split('=').map(c => c.trim());
-        return {name, value, domain: 'localhost', url: 'http://localhost:3000'};
-    });
-
-    // Puppeteer에 쿠키 설정
-    await page.setCookie(...cookies);
-
-    await page.goto('http://localhost:3000/result_detail_ai_singer', { waitUntil: 'networkidle0' });
-
-    // PDF로 렌더링
-    const pdf = await page.pdf({ format: 'A4' });
-
-    await browser.close();
-
-    // PDF 파일을 클라이언트에게 제공
-    res.contentType('application/pdf');
-    res.send(pdf);
-});
-
-router.post('/file_download_announce', ensureAuthenticated, async (req, res) => {
-    const { result, error, status } = await checkUserResult(req.user._id, 3);
-
-    if (error) {
-        if (status === 404 || status === 500) {
-            return res.status(status).send(error);
-        }
-        // 결과가 없는 경우
-        return res.render('no_result', { message: error });
+    if (result.ai_voice_MAE_similarity === null) {
+        return res.send(`
+            <script>
+                alert('결과 보기에 앞서 먼저 AI 가수 목소리 탐지를 위한 음성을 업로드해주세요.');
+                window.history.back(); // Redirects back to the previous page
+            </script>
+        `);
     }
 
     //const browser = await puppeteer.launch({ args: ['--font-render-hinting=none'] });
@@ -580,7 +668,106 @@ router.post('/file_download_announce', ensureAuthenticated, async (req, res) => 
     // Puppeteer에 쿠키 설정
     await page.setCookie(...cookies);
 
-    await page.goto('http://localhost:3000/announcer_result_detail', { waitUntil: 'networkidle0' });
+    await page.goto('http://localhost:3000/pdf_singer', { waitUntil: 'networkidle0' });
+
+    // PDF로 렌더링
+    const pdf = await page.pdf({ format: 'A4' });
+
+    await browser.close();
+
+    // PDF 파일을 클라이언트에게 제공
+    res.contentType('application/pdf');
+    res.send(pdf);
+});
+/**
+ *  pdf 페이지 라우트(announcer)
+ */
+router.get('/pdf_announcer', ensureAuthenticated, async (req, res) => {
+    
+    const { result, error, status } = await checkUserResult(req.user._id, 3);
+
+    var mfccDescriptions = [
+        {name: "음성의 피치 변화", mfcc: "MFCC2", value: result.mfcc_acc_list[0]},
+        {name: "발음의 정확성", mfcc: "MFCC3", value: result.mfcc_acc_list[1]},
+        {name: "특정 음소의 발음 전달", mfcc: "MFCC5", value: result.mfcc_acc_list[2]},
+        {name: "발음의 연결성", mfcc: "MFCC6", value: result.mfcc_acc_list[3]},
+        {name: "발음 속도", mfcc: "MFCC8", value: result.mfcc_acc_list[4]}
+      ];
+      var excellent = [];
+      var good = [];
+      var poor = [];
+      var poor_mfccs = [];
+      var thresholds = [95, 80];  // 우수: 95 이상, 양호: 80-94, 미흡: 80 미만
+      var i = 0;
+      var mfcc = ["mfcc2", "mfcc3", "mfcc5" ,"mfcc6", "mfcc8"];
+
+      if (error) {
+        if (status === 404 || status === 500) {
+            return res.status(status).send(error);
+        }
+        // 결과가 없는 경우
+        return res.render('no_result', { message: error });
+    }
+
+      mfccDescriptions.forEach(desc => {
+        if (desc.value >= thresholds[0]) {
+          excellent.push(`${desc.name}(${desc.mfcc})`);
+        } else if (desc.value >= thresholds[1]) {
+          good.push(`${desc.name}(${desc.mfcc})`);
+        } else {
+          poor.push(`${desc.name}(${desc.mfcc})`);
+          poor_mfccs.push(mfcc[i])
+        }
+        i++;
+      });
+      console.log(poor_mfccs)
+
+    // 결과가 있으면 결과 페이지 렌더링
+    res.render('pdf_announcer', {
+        userId: req.user._id,
+        result, 
+        excellent,
+        good,
+        poor,
+        poor_mfccs,
+    })
+});
+
+router.post('/file_download_announce', ensureAuthenticated, async (req, res) => {
+    const { result, error, status } = await checkUserResult(req.user._id, 3);
+
+    if (error) {
+        if (status === 404 || status === 500) {
+            return res.status(status).send(error);
+        }
+        // 결과가 없는 경우
+        return res.render('no_result', { message: error });
+    }
+
+    //0918 SOHEE 추가
+    if (result.announcer_MAE_similarity === null) {
+        return res.send(`
+            <script>
+                alert('결과 보기에 앞서 먼저 발성 연습을 위한 음성을 업로드해주세요.');
+                window.history.back(); // Redirects back to the previous page
+            </script>
+        `);
+    }
+
+    //const browser = await puppeteer.launch({ args: ['--font-render-hinting=none'] });
+    const browser = await puppeteer.launch({headless: true, args: ['--no-sandbox']});
+    const page = await browser.newPage();
+
+    // 로그인 쿠키 가져오기
+    const cookies = req.headers.cookie.split(';').map(cookie => {
+        const [name, value] = cookie.split('=').map(c => c.trim());
+        return {name, value, domain: 'localhost', url: 'http://localhost:3000'};
+    });
+
+    // Puppeteer에 쿠키 설정
+    await page.setCookie(...cookies);
+
+    await page.goto('http://localhost:3000/pdf_announcer', { waitUntil: 'networkidle0' });
 
     // PDF로 렌더링
     const pdf = await page.pdf({ format: 'A4' });

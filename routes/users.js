@@ -10,9 +10,11 @@ const User = require('../models/User')
 const db = mongoose.connection;
 
 //수정 -> MongoDB Atlas(클라우드)에 연결
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@${process.env.DB_HOST}/${process.env.DB_NAME}?retryWrites=true&w=majority`;
+//const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@${process.env.DB_HOST}/${process.env.DB_NAME}?retryWrites=true&w=majority`;
+//mongoose.connect(uri);
 
-mongoose.connect(uri);
+//0918 수정, MongoDB 로컬에 연결
+mongoose.connect('mongodb://localhost:27017/mydatabase');
 
 // Login page
 router.get('/login', forwardAuthenticated, (req, res) => {
@@ -27,7 +29,15 @@ router.post('/login', (req, res, next) => {
         }
         if (!user) {
             // 사용자 인증 실패
-            return res.redirect('/users/login');
+            res.send(`
+                <script>
+                    alert('ID가 존재하지 않거나, PW가 일치하지 않습니다');
+                    window.history.back(); // Redirects back to the previous pa// 링크를 새 창에 띄우기
+                    //window.open('http://localhost:3000/users/login', '_self');
+                </script>
+            `);
+            return
+            //return res.redirect('/users/login');
         }
         req.logIn(user, (err) => {
             if (err) {
